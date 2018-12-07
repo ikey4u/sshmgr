@@ -1,13 +1,14 @@
 #! /usr/bin/env python3
 #! -*- coding:utf-8 -*-
 
-import paramiko
 import os
 import sys
 import random
 import time
 import json
 import argparse
+
+import paramiko
 
 dckrfmt = """\
 FROM ubuntu:16.04
@@ -75,8 +76,12 @@ class SSH:
         self.hostid = hostid
         self.hostip = ""
         self.dockerdb = "/root/dockerdb/userdb.json"
+        self.sshconf = os.path.expanduser('~/.ssh/config')
 
         try:
+            if not os.path.exists(self.sshconf):
+                print(f"[x] No config file found in {self.sshconf}!")
+                raise
             conn = self.__connect()
             conn.exec_command(f"mkdir -p {os.path.dirname(self.dockerdb)}")
             i, o, e = conn.exec_command("hash docker 2>/dev/null && echo 1")
@@ -88,13 +93,12 @@ class SSH:
             else:
                 conn.close()
         except Exception as e:
-            print(f"[x] Error happened when connect to {hostid}!")
+            print(f"[x] Error happened when connect to host!")
             sys.exit(1)
 
     def __connect(self):
         config = paramiko.SSHConfig()
-        with open(os.path.expanduser('~/.ssh/config')) as _:
-            config.parse(_)
+        with open(self.sshconf, 'r') as _: config.parse(_)
         hostopt = config.lookup(self.hostid)
         cfg = dict()
         cfg['hostname'] = hostopt['hostname']
