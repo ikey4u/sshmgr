@@ -9,34 +9,61 @@ import time
 import json
 import argparse
 
-dckrfmt = """
+dckrfmt = """\
 FROM ubuntu:16.04
 SHELL ["/bin/bash", "-c"]
-RUN apt update && apt install -y wget ca-certificates apt-transport-https && \
-    wget http://ahageek.com/txt/16.04.txt -O - | grep -v @ > /etc/apt/sources.list && apt update && \
-    mkdir -p /root/.ssh/ && mkdir -p /var/run/sshd && mkdir -p /var/log/supervisor && \
-    apt install -y openssh-server vim git supervisor pwgen sudo locales && \
-    useradd -d /home/{user:s} -m -s /bin/bash {user} && \
-    usermod -aG sudo {user} && \
-    echo "{user}@{hostid:s}" > /home/{user}/.userid && \
-    rm -rf /etc/update-motd.d/* && \
-    echo '#! /bin/bash' > /etc/update-motd.d/00-header-hpdmlabs && \
-    echo "echo ----------------------------------" >> /etc/update-motd.d/00-header-hpdmlabs && \
-    echo "echo Welcome {user} to HPDM Labs!" >> /etc/update-motd.d/00-header-hpdmlabs && \
-    echo "echo ID   : \$(cat /home/{user}/.userid)" >> /etc/update-motd.d/00-header-hpdmlabs && \
-    echo "echo ----------------------------------" >> /etc/update-motd.d/00-header-hpdmlabs && \
-    chmod +x /etc/update-motd.d/00-header-hpdmlabs && \
-    echo "LC_ALL=en_US.UTF-8" >> /etc/environment && \
-    echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen  && \
-    echo "LANG=en_US.UTF-8" > /etc/locale.conf  && \
-    locale-gen en_US.UTF-8 && \
-    psd=$(pwgen -N 1 {psdlen:d}) && echo "{user}:$psd" | chpasswd && echo $psd > /home/{user}/.defpsd && \
-        printf "\\n{spy:s}$(cat /home/{user}/.defpsd){spy}\\n"
-COPY {supervisord:s} /etc/supervisor/conf.d/supervisord.conf
+COPY {sourcelist:s} {init:s} {motd:s} {sprvsr:s} /tmp/
+RUN bash /tmp/{init} {user:s} /tmp/{sourcelist} /tmp/{motd} /tmp/{sprvsr} {psdlen:d}
 ENTRYPOINT "/usr/bin/supervisord"
 """
 
-sprvsrfile = """
+sourcelist = """\
+deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ xenial main restricted universe multiverse
+deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ xenial-updates main restricted universe multiverse
+deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ xenial-backports main restricted universe multiverse
+deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ xenial-security main restricted universe multiverse
+"""
+
+init = """\
+#! /bin/bash
+user=$1
+sourcelist=$2
+motd=$3
+sprvsr=$4
+psdlen=$5
+
+apt update && apt install -y wget ca-certificates apt-transport-https
+cat $sourcelist > /etc/apt/sources.list && apt update
+mkdir -p /$user/.ssh/ && mkdir -p /var/run/sshd && mkdir -p /var/log/supervisor
+apt install -y openssh-server vim supervisor sudo locales pwgen
+
+useradd -d /home/$user -m -s /bin/bash $user
+usermod -aG sudo $user
+
+echo "LC_ALL=en_US.UTF-8" >> /etc/environment
+echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen
+echo "LANG=en_US.UTF-8" > /etc/locale.conf
+locale-gen en_US.UTF-8
+
+rm -rf /etc/update-motd.d/*
+cat $motd > /etc/update-motd.d/00-sshmgr-sayhello
+chmod +x /etc/update-motd.d/00-sshmgr-sayhello
+
+cat $sprvsr > /etc/supervisor/conf.d/supervisord.conf
+
+psd=$(pwgen -N 1 $psdlen) && echo "$user:$psd" | chpasswd
+echo $psd > /home/$user/.defpsd
+"""
+
+motdfmt = """\
+#! /bin/bash
+echo ----------------------------------
+echo Welcome {user:s} to HPDM Labs!
+echo ID   : {hostid:s}:{user}
+echo ----------------------------------
+"""
+
+sprvsrfile = """\
 [supervisord]
 nodaemon=true
 [program:sshd]
@@ -178,11 +205,14 @@ class SSH:
 
     def deldckr(self, user):
         conn = self.__connect()
+
         if self.is_user_exist(user) and self.hasimage(user):
             for jar in self.get_dckrjar_list(user):
-                conn.exec_command(f"docker stop {jar}")
-                conn.exec_command(f"docker rm {jar}")
-            conn.exec_command(f"docker rmi {self.hostid}:{user}")
+                i, o, e = conn.exec_command(f"docker stop {jar} && docker rm {jar}")
+                o.channel.recv_exit_status()
+            i, o, e = conn.exec_command(f"docker rmi {self.hostid}:{user}")
+            o.channel.recv_exit_status()
+
         if self.is_file_exist(self.dockerdb):
             sftp = conn.open_sftp()
             fuserdb = sftp.file(self.dockerdb, 'r')
@@ -195,9 +225,15 @@ class SSH:
             json.dump(userdb, fuserdb)
             fuserdb.close()
             sftp.close()
-        conn.exec_command("docker image prune")
-        conn.exec_command("docker contanier prune")
+
+        i, o, e = conn.exec_command("yes | docker image prune")
+        o.channel.recv_exit_status()
+
+        i, o, e = conn.exec_command("yes | docker contanier prune")
+        o.channel.recv_exit_status()
+
         conn.close()
+        return True
 
     def newdckr(self, user, portnum = 0, specport = None):
         """Create a docker for user
@@ -250,46 +286,38 @@ class SSH:
         # Upload configuration file
         tm = str(time.time())
         sftp = conn.open_sftp()
-        # write supervisord file
-        sprvsr = "/tmp/" + tm + ".supervisord"
-        fsprvsr = sftp.file(sprvsr, 'w')
-        fsprvsr.write(sprvsrfile)
-        fsprvsr.close()
-        # write dockerfile
-        spy = "[DOCKER]"
-        dckrfile = dckrfmt.format(user = user,
-                hostid = self.hostid,
-                supervisord = tm + ".supervisord", # shuold use relative path
-                spy = spy,
-                psdlen = 15)
-        dckr = '/tmp/' + tm + '.dockerfile'
-        fdckr = sftp.file(dckr, 'w')
-        fdckr.write(dckrfile)
-        fdckr.close()
-
+        with sftp.file(f"/tmp/{tm}.sourcelist", "w") as _:
+            _.write(sourcelist)
+        with sftp.file(f"/tmp/{tm}.motd", "w") as _:
+            _.write(motdfmt.format(user = user, hostid = self.hostid))
+        with sftp.file(f"/tmp/{tm}.supervisord", "w") as _:
+            _.write(sprvsrfile)
+        with sftp.file(f"/tmp/{tm}.init", "w") as _:
+            _.write(init)
+        with sftp.file(f"/tmp/{tm}.dockerfile", "w") as _:
+            dckr = dckrfmt.format(sourcelist = f"{tm}.sourcelist",
+                    init = f"{tm}.init",
+                    motd = f"{tm}.motd",
+                    sprvsr = f"{tm}.supervisord",
+                    user = f"{user}",
+                    psdlen = 15)
+            _.write(dckr)
         sftp.close()
 
         # docker build to build base image
         dckrbuild = "docker build --tag {hostid:s}:{user:s} --file {dckr:s} /tmp".format(
                 hostid = self.hostid,
                 user = user,
-                dckr = dckr)
+                dckr = f"/tmp/{tm}.dockerfile")
         print("[+] {}".format(dckrbuild))
         stdin, stdout, stderr = conn.exec_command(dckrbuild)
         err = stdout.channel.recv_exit_status()
         if err:
             print("[x] Cannot run docker build!")
-            for line in stdout.readlines():
+            for line in stderr.readlines():
                 print(line.strip('\n'))
             conn.close()
             return None, False
-        else:
-            lines = stdout.readlines()
-            for line in lines:
-                line = line.strip('\n').strip()
-                if line.startswith(spy):
-                    dckrinfo['psd'] = line.strip(spy)
-                    break
 
         # docker run to generate container
         dckrun = "docker run --hostname={hostid:s} --name {user:s} --volume /home/{user}:/home/{user}/share".format(
@@ -310,13 +338,23 @@ class SSH:
         stdin, stdout, stderr = conn.exec_command(dckrperm)
         err = stdout.channel.recv_exit_status()
         if err:
-            print("[x] docker exec failed!")
+            print("[x] Cannot change share folder permission!")
             conn.close()
             return None, False
 
+        # docker exec to get default password
+        i, o, e  = conn.exec_command(f"docker exec -i {user} cat /home/{user}/.defpsd")
+        if o.channel.recv_exit_status():
+            print("[x] Cannot retrieve default password!")
+            print(f"[ERROR] {e.readlines()}")
+            conn.close()
+            return None, False
+        else:
+            lines = o.readlines()
+            dckrinfo['psd'] = lines[0].strip('\n')
+
         # Remove unused files
-        conn.exec_command(f'rm -rf {sprvsr}')
-        conn.exec_command('rm -rf {dckr}')
+        conn.exec_command(f'rm -rf /tmp/{tm}.*')
 
         # Save user information
         self.set_userinfo(user, dckrinfo)
@@ -401,7 +439,15 @@ if __name__ == "__main__":
                 ssh.deldckr(args.user)
                 print("Cannot make docker for the user!")
         elif args.x == "deldckr":
-            ssh.deldckr(args.user)
+            print (f'[+] Removing docker of {args.user} ... ', end = '')
+            try:
+                if ssh.deldckr(args.user):
+                    print('[OK]')
+                else:
+                    print('[X]')
+            except Exception as e:
+                print('[X]')
+                print(f'ERROR: {str(e)}')
         elif args.x == "getinfo":
             ssh.get_userinfo(args.user)
         else:
