@@ -1,0 +1,2 @@
+pyenv local 3.6.0
+python sshmgr.py "$*"
