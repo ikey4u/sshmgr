@@ -38,16 +38,3 @@ then
     pyenv local 3.6.0
     pip3 install paramiko
 fi
-
-# install sshmgr
-installdir=~/.local/sshmgr
-mkdir -p $installdir && cp -f sshmgr.py sshmgr $installdir
-has_sshmgr=NO && hash sshmgr 2>/dev/null && has_sshmgr=YES
-if [[ $has_sshmgr == "NO" ]]
-then
-    sudo ln -s $installdir/sshmgr /usr/local/bin/sshmgr
-    sudo chmod +x $installdir/sshmgr
-fi
-
-# refresh the shell
-exec $SHELL

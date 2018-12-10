@@ -1,9 +1,0 @@
-#! /bin/bash
-# Author: bugnofree
-# Date: 2018-12-07
-# Contact: pwnkeeper@gmail.com
-
-installdir=~/.local/sshmgr
-rm -rf $installdir
-sudo rm /usr/local/bin/sshmgr
-exec $SHELL

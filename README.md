@@ -14,6 +14,13 @@
       -x {newdckr,deldckr,getinfo}
                             The action to execture
 
+# Installation
+
+# setuptools
+
+Download the source, uncompress it and enter the source directory. Run `make` and you are done.
+
+
 # demo output
 
     ➜  sshmgr (master) ✗ python sshmgr.py 108 -u Tom -x newdckr

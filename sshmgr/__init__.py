@@ -411,8 +411,7 @@ class SSH:
         else:
             return None
 
-if __name__ == "__main__":
-
+def main():
     parser = argparse.ArgumentParser(description = "A powerful linux server manager")
     parser.add_argument("hostid", help = "The ssh host ID", type = str)
     parser.add_argument("-u", "--user", help = "The user name", type = str)
@@ -461,3 +460,5 @@ if __name__ == "__main__":
         for user in users:
             print(user)
 
+if __name__ == "__main__":
+    main()
