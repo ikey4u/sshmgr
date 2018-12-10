@@ -16,17 +16,29 @@
 
 # Installation
 
-# setuptools
-
 Download the source, uncompress it and enter the source directory. Run `make` and you are done.
 
+# Quick start
 
-# demo output
+    ➜  sshmgr (master) ✗ sshmgr -h
+    usage: sshmgr [-h] [-u USER] [-k KEY] [-x {newdckr,deldckr,getinfo,list}]
+                  hostid [hostid ...]
 
-    ➜  sshmgr (master) ✗ python sshmgr.py 108 -u Tom -x newdckr
-    [+] docker build --tag 108:Tom --file /tmp/1544153926.821344.dockerfile /tmp
-    [+] docker run --hostname=108 --name Tom --volume /home/Tom:/home/Tom/share --publish 25826:22  --publish 7171:7171  --publish 50543:50543  --publish 19085:19085  -d 108:Tom
-    [+] docker exec -i Tom chown -R Tom:Tom /home/Tom/share
-    Now you can use 'ssh Tom@210.75.xxx.xx -p xxx' and password 'xxxxxxxxxxx' to login.
-    Your extra available ports are: xxxx,xxx,xxx
+    A powerful linux server manager
 
+    positional arguments:
+      hostid                The ssh host ID
+
+    optional arguments:
+      -h, --help            show this help message and exit
+      -u USER, --user USER  The user name
+      -k KEY, --key KEY     The new key for the master
+      -x {newdckr,deldckr,getinfo,list}
+                            The action to execute for the user
+
+You could add multiple host IDs with space separated. You can give two special ID to easy
+your task:
+
+- `003..005` In this case, sshmgr will iterate 003, 004 and 005.
+- `@/path/to/ids` In this case, sshmgr will open `/path/to/ids` (where one id holds in one line),
+    and iterates the ids.

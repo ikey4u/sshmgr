@@ -72,29 +72,23 @@ command=/usr/sbin/sshd -D
 """
 
 class SSH:
+    """Manage the user with ssh key"""
     def __init__(self, hostid):
         self.hostid = hostid
         self.hostip = ""
         self.dockerdb = "/root/dockerdb/userdb.json"
         self.sshconf = os.path.expanduser('~/.ssh/config')
 
-        try:
-            if not os.path.exists(self.sshconf):
-                print(f"[x] No config file found in {self.sshconf}!")
-                raise
-            conn = self.__connect()
-            conn.exec_command(f"mkdir -p {os.path.dirname(self.dockerdb)}")
-            i, o, e = conn.exec_command("hash docker 2>/dev/null && echo 1")
-            lines = [l.strip('\n') for l in o.readlines()]
-            if len(lines) == 0:
-                print("[x] Please install docker first!")
-                conn.close()
-                raise
-            else:
-                conn.close()
-        except Exception as e:
-            print(f"[x] Error happened when connect to host!")
+        if not os.path.exists(self.sshconf):
+            print(f"[x] No config file found in {self.sshconf}!")
             sys.exit(1)
+
+        # Check connection(only once for now)
+        try:
+            conn = self.__connect()
+            conn.close()
+        except Exception as e:
+            raise Exception("Cannot connect to the server!")
 
     def __connect(self):
         config = paramiko.SSHConfig()
@@ -256,6 +250,17 @@ class SSH:
                 - psd (string): The user password.
         """
 
+        # Check if docker is existed
+        conn = self.__connect()
+        conn.exec_command(f"mkdir -p {os.path.dirname(self.dockerdb)}")
+        i, o, e = conn.exec_command("hash docker 2>/dev/null && echo 1")
+        output = o.readlines()
+        lines = [l.strip('\n') for l in output]
+        if len(lines) == 0:
+            print("[x] Please install docker first!")
+            conn.close()
+            return None, False
+
         if specport is None: specport = list()
 
         dckrinfo = dict()
@@ -264,7 +269,6 @@ class SSH:
 
         # At least one port for ssh connection
         portnum += 1
-        conn = self.__connect()
         dckrinfo['ip'] = self.hostip
 
         # Check if the container exists
@@ -411,61 +415,150 @@ class SSH:
         else:
             return None
 
+    @staticmethod
+    def getoutput(conn, cmd):
+        i, o, e = conn.exec_command(cmd)
+        err = o.channel.recv_exit_status()
+        if err:
+            return None, False
+        else:
+            output = o.readlines()
+            lines = [l.strip('\n') for l in output]
+            return lines, True
+
+    def gethome(self):
+        conn = self.__connect()
+        # realpath command is not available in some ubuntu release
+        homes, ok = self.getoutput(conn, 'readlink -f ~')
+        home = None
+        if ok: home = homes[0]
+        conn.close()
+        return home
+
+    def change_passwd(self, newpasswd):
+        pass
+
+    def change_sshkey(self, key):
+        """Change user ssh
+
+        :key (str): The path to load or save ssh key.
+        """
+
+        conn = self.__connect()
+        sftp = conn.open_sftp()
+        home = self.gethome()
+        haserr = False
+        if home is not None:
+            key = os.path.expanduser(key)
+            if not os.path.exists(key):
+                print('[x] Cannot find key in the given path!')
+                haserr = True
+            if not key.endswith('.pub'):
+                print('[x] Not a public ssh key!')
+                haserr = True
+            if not haserr:
+                with open(key, 'r') as fkey:
+                    with sftp.file(f'{home}/.ssh/authorized_keys', 'w') as _:
+                        _.write(fkey.read())
+        else:
+            print("[x] Cannot get home path!")
+            haserr = True
+        sftp.close()
+        conn.close()
+        return False if haserr else True
+
+def add_sshkey_by_passwd(ip, user, passwd):
+    pass
+
 def main():
     parser = argparse.ArgumentParser(description = "A powerful linux server manager")
-    parser.add_argument("hostid", help = "The ssh host ID", type = str)
+    parser.add_argument("hostid", nargs = "+", help = "The ssh host ID", type = str)
     parser.add_argument("-u", "--user", help = "The user name", type = str)
-    parser.add_argument("-x", choices = ["newdckr", "deldckr", "getinfo"],
-            help = "The action to execture", type = str)
+    parser.add_argument("-k", "--key", help = "The new key for the master", type = str)
+    parser.add_argument("-x", choices = ["newdckr", "deldckr", "getinfo", "list"],
+            help = "The action to execute for the user", type = str)
     args = parser.parse_args()
 
-    ssh = SSH(args.hostid)
-
-    if args.user:
-        if args.x == "newdckr":
-            dckrinfo, ok = ssh.newdckr(args.user, 3)
-            if ok:
-                if dckrinfo is None:
-                    print('[*] Cannot get the user inforamtion !')
-                else:
-                    infomsg = "Now you can use 'ssh {user:s}@{ip:s} -p {sshport:d}' and password '{psd:s}' to login.".format(
-                        user = dckrinfo['user'],
-                        ip = dckrinfo['ip'],
-                        sshport = dckrinfo['sshport'],
-                        psd = dckrinfo['psd']
-                        )
-                    print(infomsg)
-                    if len(dckrinfo['xport']) > 0:
-                        portstr = ','.join([str(i) for i in dckrinfo['xport']])
-                        print("Your extra available ports are: {xport:s}".format(xport = portstr))
-            else:
-                ssh.deldckr(args.user)
-                print("Cannot make docker for the user!")
-        elif args.x == "deldckr":
-            print (f'[+] Removing docker of {args.user} ... ', end = '')
-            try:
-                if ssh.deldckr(args.user):
-                    print('[OK]')
-                else:
-                    print('[X]')
-            except Exception as e:
-                print('[X]')
-                print(f'ERROR: {str(e)}')
-        elif args.x == "getinfo":
-            userinfo = ssh.get_userinfo(args.user)
-            if userinfo is not None:
-                print(f"User             name: {userinfo['user']}")
-                print(f"User           xports: {userinfo['xport']}")
-                print(f"User         SSH port: {userinfo['sshport']}")
-                print(f"User default password: f{userinfo['psd']}")
-            else:
-                print("User does not exist!")
+    host = list()
+    for h in args.hostid:
+        if h.startswith('@'):
+            h = os.path.expanduser(h[1:])
+            if os.path.exists(h):
+                with open(h, 'r') as _:
+                    lines = _.readlines()
+                    host += [l.strip('\n') for l in lines]
+        elif len(h.split('..')) == 2:
+            beg, end = h.split('..')[0], h.split('..')[1]
+            for i in range(int(beg), int(end) + 1, 1):
+                host.append(f'{str(i):>0{len(beg)}}')
         else:
-            print("[x] Unknown action!")
-    else:
-        users = ssh.get_userinfo()
-        for user in users:
-            print(user)
+            host.append(h)
+
+    for curhost in host:
+        haserr = False
+        ssh = None
+        try:
+            ssh = SSH(curhost)
+        except Exception as e:
+            print(str(e))
+            print(f"{curhost} Connection Error! Skipped!")
+            haserr = True
+        if haserr: continue
+
+        if args.user:
+            if args.x == "newdckr":
+                dckrinfo, ok = ssh.newdckr(args.user, 3)
+                if ok:
+                    if dckrinfo is None:
+                        print('[*] Cannot get the user inforamtion !')
+                    else:
+                        infomsg = "Now you can use 'ssh {user:s}@{ip:s} -p {sshport:d}' and password '{psd:s}' to login.".format(
+                            user = dckrinfo['user'],
+                            ip = dckrinfo['ip'],
+                            sshport = dckrinfo['sshport'],
+                            psd = dckrinfo['psd']
+                            )
+                        print(infomsg)
+                        if len(dckrinfo['xport']) > 0:
+                            portstr = ','.join([str(i) for i in dckrinfo['xport']])
+                            print("Your extra available ports are: {xport:s}".format(xport = portstr))
+                else:
+                    ssh.deldckr(args.user)
+                    print("Cannot make docker for the user!")
+            elif args.x == "deldckr":
+                print (f'[+] Removing docker of {args.user} ... ', end = '')
+                try:
+                    if ssh.deldckr(args.user):
+                        print('[OK]')
+                    else:
+                        print('[X]')
+                except Exception as e:
+                    print('[x]')
+                    print(f'ERROR: {str(e)}')
+            elif args.x == "getinfo":
+                userinfo = ssh.get_userinfo(args.user)
+                if userinfo is not None:
+                    print(f"User             name: {userinfo['user']}")
+                    print(f"User           xports: {userinfo['xport']}")
+                    print(f"User         SSH port: {userinfo['sshport']}")
+                    print(f"User default password: f{userinfo['psd']}")
+                else:
+                    print("User does not exist!")
+            elif args.x == "list":
+                users = ssh.get_userinfo()
+                for user in users:
+                    print(user)
+            else:
+                print("[x] Unknown action!")
+                parser.print_usage()
+        elif args.key:
+            ok = ssh.change_sshkey(args.key)
+            if ok:
+                print(f"[OK] Change ssh key for {curhost} successfully!")
+            else:
+                print(f"[x] Some error happend when changed ssh key for {curhost}!")
+        else:
+            parser.print_usage()
 
 if __name__ == "__main__":
     main()
