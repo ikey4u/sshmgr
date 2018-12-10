@@ -541,7 +541,7 @@ def main():
                     print(f"User             name: {userinfo['user']}")
                     print(f"User           xports: {userinfo['xport']}")
                     print(f"User         SSH port: {userinfo['sshport']}")
-                    print(f"User default password: f{userinfo['psd']}")
+                    print(f"User default password: {userinfo['psd']}")
                 else:
                     print("User does not exist!")
             elif args.x == "list":
