@@ -452,7 +452,14 @@ def main():
                 print('[X]')
                 print(f'ERROR: {str(e)}')
         elif args.x == "getinfo":
-            ssh.get_userinfo(args.user)
+            userinfo = ssh.get_userinfo(args.user)
+            if userinfo is not None:
+                print(f"User             name: {userinfo['user']}")
+                print(f"User           xports: {userinfo['xport']}")
+                print(f"User         SSH port: {userinfo['sshport']}")
+                print(f"User default password: f{userinfo['psd']}")
+            else:
+                print("User does not exist!")
         else:
             print("[x] Unknown action!")
     else:
