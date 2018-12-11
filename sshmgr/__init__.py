@@ -474,8 +474,9 @@ def main():
     parser = argparse.ArgumentParser(description = "A powerful linux server manager")
     parser.add_argument("hostid", nargs = "+", help = "The ssh host ID", type = str)
     parser.add_argument("-u", "--user", help = "The user name", type = str)
+    parser.add_argument("-l", "--list", help = "List all users on the server", action='store_true')
     parser.add_argument("-k", "--key", help = "The new key for the master", type = str)
-    parser.add_argument("-x", choices = ["newdckr", "deldckr", "getinfo", "list"],
+    parser.add_argument("-x", choices = ["newdckr", "deldckr", "getinfo"],
             help = "The action to execute for the user", type = str)
     args = parser.parse_args()
 
@@ -544,13 +545,13 @@ def main():
                     print(f"User default password: {userinfo['psd']}")
                 else:
                     print("User does not exist!")
-            elif args.x == "list":
-                users = ssh.get_userinfo()
-                for user in users:
-                    print(user)
             else:
                 print("[x] Unknown action!")
                 parser.print_usage()
+        elif args.list:
+            users = ssh.get_userinfo()
+            for user in users.keys():
+                print(users[user])
         elif args.key:
             ok = ssh.change_sshkey(args.key)
             if ok:
