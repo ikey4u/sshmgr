@@ -4,4 +4,4 @@
 # Contact: pwnkeeper@gmail.com
 
 python3 setup.py install
-rm -rf build dist sshmgr.egg-info
+rm -rf build dist sshmgr.egg-info sshmgr/__pycache__

@@ -24,7 +24,6 @@ then
         shconf=~/.zshrc
     fi
     echo "$shim" >> $shconf
-    exec $SHELL
 fi
 
 # install python 3.6.0
@@ -38,3 +37,4 @@ then
     pyenv local 3.6.0
     pip3 install paramiko
 fi
+exec $SHELL
