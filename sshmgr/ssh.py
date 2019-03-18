@@ -96,8 +96,12 @@ class SSH:
         cfg = dict()
         cfg['hostname'] = hostopt['hostname']
         cfg['username'] = hostopt['user']
-        cfg['port'] = hostopt['port']
+        if 'port' in hostopt.keys():
+            cfg['port'] = hostopt['port']
+        else:
+            cfg['port'] = 22
         cfg['key_filename'] = hostopt['identityfile']
+        cfg['timeout'] = 10
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.connect(**cfg)

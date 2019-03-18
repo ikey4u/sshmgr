@@ -86,8 +86,11 @@ def main():
                 parser.print_usage()
         elif args.list:
             users = ssh.get_userinfo()
-            for user in users.keys():
-                print(users[user])
+            if users is not None:
+                for user in users.keys():
+                    print(users[user])
+            else:
+                print('[!] No user found!')
         elif args.key:
             ok = ssh.change_sshkey(args.key)
             if ok:
