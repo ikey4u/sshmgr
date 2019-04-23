@@ -14,6 +14,8 @@ It leverages docker to automatically do
 - setup a ssh login welcome message
 
 It supports `docker` for normal docker creation and `nvidia-docker` for gpu docker creation.
+The dockerfile for nvidia based gpu could be found here
+@[https://gitlab.com/nvidia/cuda].
 
 You can specify a customized `dockerfile` with first line beginning with `FROM ubuntu:<supported ubuntu version>`.
 
