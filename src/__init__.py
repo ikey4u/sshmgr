@@ -5,16 +5,33 @@ from .ssh import SSH
 
 import argparse
 import os
+import sys
 
 def main():
+    ROOT = os.path.abspath(os.path.dirname(__file__))
+
     parser = argparse.ArgumentParser(description = "A powerful linux server manager")
-    parser.add_argument("hostid", nargs = "+", help = "The ssh host ID", type = str)
+    parser.add_argument("-H", "--hostid", nargs = "+", help = "The ssh host ID", type = str)
+    parser.add_argument("--fdocker", default = '', type = str,
+            help = "The file path to dockerfile, the firstline of the file must be `FROM ubuntu:16.04`")
+    parser.add_argument("--docker", default = "docker", type = str,
+            help = "The main docker command such as `docker` or `nvidia-docker` to start docker, the default is `docker`")
+    parser.add_argument("-v", "--version", action="store_true", help = "Show the version of sshmgr")
     parser.add_argument("-u", "--user", help = "The user name", type = str)
     parser.add_argument("-l", "--list", help = "List all users on the server", action='store_true')
     parser.add_argument("-k", "--key", help = "The new key for the master", type = str)
     parser.add_argument("-x", choices = ["newdckr", "deldckr", "getinfo"],
             help = "The action to execute for the user", type = str)
     args = parser.parse_args()
+
+    if args.version:
+        with open(os.path.join(ROOT, '__VERSION__'), 'r') as _:
+            print(_.readline().strip())
+        return
+
+    if not args.hostid:
+        parser.print_help()
+        return
 
     host = list()
     for h in args.hostid:
@@ -35,7 +52,7 @@ def main():
         haserr = False
         ssh = None
         try:
-            ssh = SSH(curhost)
+            ssh = SSH(curhost, docker = args.docker)
         except Exception as e:
             print(str(e))
             print(f"{curhost} Connection Error! Skipped!")
@@ -44,7 +61,7 @@ def main():
 
         if args.user:
             if args.x == "newdckr":
-                dckrinfo, ok = ssh.newdckr(args.user, 3)
+                dckrinfo, ok = ssh.newdckr(args.user, portnum = 3, dockerfile = args.fdocker)
                 if ok:
                     if dckrinfo is None:
                         print('[*] Cannot get the user inforamtion !')

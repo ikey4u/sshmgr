@@ -9,74 +9,22 @@ import json
 
 import paramiko
 
-dckrfmt = """\
-FROM ubuntu:16.04
-SHELL ["/bin/bash", "-c"]
-COPY {sourcelist:s} {init:s} {motd:s} {sprvsr:s} /tmp/
-RUN bash /tmp/{init} {user:s} /tmp/{sourcelist} /tmp/{motd} /tmp/{sprvsr} {psdlen:d}
-ENTRYPOINT "/usr/bin/supervisord"
-"""
-
-sourcelist = """\
-deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ xenial main restricted universe multiverse
-deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ xenial-updates main restricted universe multiverse
-deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ xenial-backports main restricted universe multiverse
-deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ xenial-security main restricted universe multiverse
-"""
-
-init = """\
-#! /bin/bash
-user=$1
-sourcelist=$2
-motd=$3
-sprvsr=$4
-psdlen=$5
-
-apt update && apt install -y wget ca-certificates apt-transport-https
-cat $sourcelist > /etc/apt/sources.list && apt update
-mkdir -p /$user/.ssh/ && mkdir -p /var/run/sshd && mkdir -p /var/log/supervisor
-apt install -y openssh-server vim supervisor sudo locales pwgen
-
-useradd -d /home/$user -m -s /bin/bash $user
-usermod -aG sudo $user
-
-echo "LC_ALL=en_US.UTF-8" >> /etc/environment
-echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen
-echo "LANG=en_US.UTF-8" > /etc/locale.conf
-locale-gen en_US.UTF-8
-
-rm -rf /etc/update-motd.d/*
-cat $motd > /etc/update-motd.d/00-sshmgr-sayhello
-chmod +x /etc/update-motd.d/00-sshmgr-sayhello
-
-cat $sprvsr > /etc/supervisor/conf.d/supervisord.conf
-
-psd=$(pwgen -N 1 $psdlen) && echo "$user:$psd" | chpasswd
-echo $psd > /home/$user/.defpsd
-"""
-
-motdfmt = """\
-#! /bin/bash
-echo ----------------------------------
-echo Welcome {user:s} to HPDM Labs!
-echo ID   : {hostid:s}:{user}
-echo ----------------------------------
-"""
-
-sprvsrfile = """\
-[supervisord]
-nodaemon=true
-[program:sshd]
-command=/usr/sbin/sshd -D
-"""
+from . import docker_general
 
 class SSH:
     """Manage the user with ssh key"""
-    def __init__(self, hostid):
+    def __init__(self, hostid, docker = "docker"):
+        """
+        :docker -> str: The command to fireup docker program.
+            For example, to start the normal docker command, you run `docker`,
+            to start nvida-docker2, you run `nvidid-docker`.
+        """
+
         self.hostid = hostid
         self.hostip = ""
         self.dockerdb = "/root/dockerdb/userdb.json"
         self.sshconf = os.path.expanduser('~/.ssh/config')
+        self.docker = docker
 
         if not os.path.exists(self.sshconf):
             print(f"[x] No config file found in {self.sshconf}!")
@@ -182,7 +130,7 @@ class SSH:
 
     def hasimage(self, user):
         conn = self.__connect()
-        cmd = f"docker image ls {self.hostid}:{user} | wc -l"
+        cmd = f"{self.docker} image ls {self.hostid}:{user} | wc -l"
         # Return what looks like below:
         #  $ docker image ls | docker image ls vps:init
         #  REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
@@ -195,7 +143,7 @@ class SSH:
 
     def get_dckrjar_list(self, user):
         conn = self.__connect()
-        cmd = f"docker ps -a | grep {self.hostid}:{user}"
+        cmd = f"{self.docker} ps -a | grep {self.hostid}:{user}"
         i, o, e = conn.exec_command(cmd)
         lines = [l.strip('\n') for l in o.readlines()]
         jar = list()
@@ -209,9 +157,9 @@ class SSH:
 
         if self.is_user_exist(user) and self.hasimage(user):
             for jar in self.get_dckrjar_list(user):
-                i, o, e = conn.exec_command(f"docker stop {jar} && docker rm {jar}")
+                i, o, e = conn.exec_command(f"{self.docker} stop {jar} && {self.docker} rm {jar}")
                 o.channel.recv_exit_status()
-            i, o, e = conn.exec_command(f"docker rmi {self.hostid}:{user}")
+            i, o, e = conn.exec_command(f"{self.docker} rmi {self.hostid}:{user}")
             o.channel.recv_exit_status()
 
         if self.is_file_exist(self.dockerdb):
@@ -227,22 +175,23 @@ class SSH:
             fuserdb.close()
             sftp.close()
 
-        i, o, e = conn.exec_command("yes | docker image prune")
+        i, o, e = conn.exec_command(f"yes | {self.docker} image prune")
         o.channel.recv_exit_status()
 
-        i, o, e = conn.exec_command("yes | docker contanier prune")
+        i, o, e = conn.exec_command(f"yes | {self.docker} contanier prune")
         o.channel.recv_exit_status()
 
         conn.close()
         return True
 
-    def newdckr(self, user, portnum = 0, specport = None):
+    def newdckr(self, user, portnum = 0, specport = None, dockerfile = ''):
         """Create a docker for user
 
         :param hostid (string): The identifier of the host.
         :param user (string): The user name.
         :param portnum (int): The number of exposed ports.
         :param specport (list of ints): The specified ports in random generated ports.
+        :dockerfile -> str: The path to docker file.
 
         return dckrinfo (dict), status (bool):
             dckrinfo:
@@ -256,11 +205,11 @@ class SSH:
         # Check if docker is existed
         conn = self.__connect()
         conn.exec_command(f"mkdir -p {os.path.dirname(self.dockerdb)}")
-        i, o, e = conn.exec_command("hash docker 2>/dev/null && echo 1")
+        i, o, e = conn.exec_command(f"hash {self.docker} 2>/dev/null && echo 1")
         output = o.readlines()
         lines = [l.strip('\n') for l in output]
         if len(lines) == 0:
-            print("[x] Please install docker first!")
+            print(f"[x] Please install {self.docker} first!")
             conn.close()
             return None, False
 
@@ -294,45 +243,27 @@ class SSH:
         # Determine if we shuold create the user
         if not self.is_user_exist(user): self.newuser(user)
 
-        # Upload configuration file
-        tm = str(time.time())
-        sftp = conn.open_sftp()
-        with sftp.file(f"/tmp/{tm}.sourcelist", "w") as _:
-            _.write(sourcelist)
-        with sftp.file(f"/tmp/{tm}.motd", "w") as _:
-            _.write(motdfmt.format(user = user, hostid = self.hostid))
-        with sftp.file(f"/tmp/{tm}.supervisord", "w") as _:
-            _.write(sprvsrfile)
-        with sftp.file(f"/tmp/{tm}.init", "w") as _:
-            _.write(init)
-        with sftp.file(f"/tmp/{tm}.dockerfile", "w") as _:
-            dckr = dckrfmt.format(sourcelist = f"{tm}.sourcelist",
-                    init = f"{tm}.init",
-                    motd = f"{tm}.motd",
-                    sprvsr = f"{tm}.supervisord",
-                    user = f"{user}",
-                    psdlen = 15)
-            _.write(dckr)
-        sftp.close()
+        dockerfile_content = ''
+        if dockerfile != '':
+            with open(dockerfile, 'r') as _:
+                firstline = _.readline().strip()
+                if firstline.startswith("FROM ubuntu:16.04"):
+                    dockerfile_content = _.read()
+                else:
+                    print(f'[x] The docker file is not supported!')
+                    return None, False
 
-        # docker build to build base image
-        dckrbuild = "docker build --tag {hostid:s}:{user:s} --file {dckr:s} /tmp".format(
-                hostid = self.hostid,
+        finish_build  = docker_general.build(conn, dockerprog = self.docker,
                 user = user,
-                dckr = f"/tmp/{tm}.dockerfile")
-        print("[+] {}".format(dckrbuild))
-        stdin, stdout, stderr = conn.exec_command(dckrbuild)
-        err = stdout.channel.recv_exit_status()
-        if err:
-            print("[x] Cannot run docker build!")
-            for line in stderr.readlines():
-                print(line.strip('\n'))
-            conn.close()
+                hostid = self.hostid,
+                content = dockerfile_content)
+
+        if finish_build == False:
             return None, False
 
         # docker run to generate container
-        dckrun = "docker run --hostname={hostid:s} --name {user:s} --volume /home/{user}:/home/{user}/share".format(
-                hostid = self.hostid, user = user)
+        dckrun = "{docker:s} run --hostname={hostid:s} --name {user:s} --volume /home/{user}:/home/{user}/share".format(
+                docker = self.docker, hostid = self.hostid, user = user)
         dckrun += exposed_ports
         dckrun += " -d {hostid:s}:{user:s} ".format(hostid = self.hostid, user = user)
         print("[+] {}".format(dckrun))
@@ -344,7 +275,7 @@ class SSH:
             return None, False
 
         # docker exec to fix shared folder permission
-        dckrperm = "docker exec -i {user:s} chown -R {user}:{user} /home/{user}/share".format(user = user)
+        dckrperm = f"{self.docker} exec -i {user} chown -R {user}:{user} /home/{user}/share"
         print("[+] {}".format(dckrperm))
         stdin, stdout, stderr = conn.exec_command(dckrperm)
         err = stdout.channel.recv_exit_status()
@@ -354,7 +285,7 @@ class SSH:
             return None, False
 
         # docker exec to get default password
-        i, o, e  = conn.exec_command(f"docker exec -i {user} cat /home/{user}/.defpsd")
+        i, o, e  = conn.exec_command(f"{self.docker} exec -i {user} cat /home/{user}/.defpsd")
         if o.channel.recv_exit_status():
             print("[x] Cannot retrieve default password!")
             print(f"[ERROR] {e.readlines()}")
@@ -363,9 +294,6 @@ class SSH:
         else:
             lines = o.readlines()
             dckrinfo['psd'] = lines[0].strip('\n')
-
-        # Remove unused files
-        conn.exec_command(f'rm -rf /tmp/{tm}.*')
 
         # Save user information
         self.set_userinfo(user, dckrinfo)
@@ -471,7 +399,4 @@ class SSH:
         return False if haserr else True
 
 def add_sshkey_by_passwd(ip, user, passwd):
-    pass
-
-if __name__ == "__main__":
     pass
