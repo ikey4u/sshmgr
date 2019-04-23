@@ -9,7 +9,6 @@ Author: bugnofree
 It leverages docker to automatically do
 
 - create a new ubuntu container for user, the current supported ubuntu base images are
-    - ubuntu 14.04
     - ubuntu 16.04
 - setup a default password located in user's `$HOME/.defpsd`
 - setup a ssh login welcome message
@@ -34,20 +33,26 @@ Download the source, uncompress it and enter the source directory. Run the follo
 
 # Quick start
 
-    ➜  sshmgr (master) ✗ sshmgr -h
-    usage: sshmgr [-h] [-u USER] [-k KEY] [-x {newdckr,deldckr,getinfo,list}]
-                  hostid [hostid ...]
+    ➜  sshmgr (master) ✔ sshmgr -h
+    usage: sshmgr [-h] [-H HOSTID [HOSTID ...]] [--fdocker FDOCKER]
+                  [--docker DOCKER] [-v] [-u USER] [-l] [-k KEY]
+                  [-x {newdckr,deldckr,getinfo}]
 
     A powerful linux server manager
 
-    positional arguments:
-      hostid                The ssh host ID
-
     optional arguments:
       -h, --help            show this help message and exit
+      -H HOSTID [HOSTID ...], --hostid HOSTID [HOSTID ...]
+                            The ssh host ID
+      --fdocker FDOCKER     The file path to dockerfile, the firstline of the file
+                            must be `FROM ubuntu:16.04`
+      --docker DOCKER       The main docker command such as `docker` or `nvidia-
+                            docker` to start docker, the default is `docker`
+      -v, --version         Show the version of sshmgr
       -u USER, --user USER  The user name
+      -l, --list            List all users on the server
       -k KEY, --key KEY     The new key for the master
-      -x {newdckr,deldckr,getinfo,list}
+      -x {newdckr,deldckr,getinfo}
                             The action to execute for the user
 
 You could add multiple host IDs with space separated. You can give two special ID to easy
