@@ -53,7 +53,11 @@ def parse_docker_cmd(args):
 
         if args.new:
             print(f'[+] Add docker for user {args.new} on {curhost} ...')
-            dckrinfo, ok = ssh.newdckr(args.new, apt = args.apt, dockerfile = args.fdocker, himsg = args.himsg, portnum = 3)
+            dckrinfo, ok = ssh.newdckr(args.new, apt = args.apt,
+                    dockerfile = args.fdocker,
+                    himsg = args.himsg,
+                    portnum = args.portnum,
+                    specport = args.require_ports)
             if ok:
                 if not dckrinfo:
                     print('[✗] Cannot get the user inforamtion !')
@@ -136,6 +140,17 @@ def main():
             action = 'store_true',
             dest = 'enable_nvidia',
             help = 'Enable gpu based nvidia docker')
+    docker_cmd_parser.add_argument('--require-ports',
+            metavar = 'the_required_ports',
+            nargs = '+',
+            type = int, # make each port int type
+            default = [],
+            help = 'The required ports exposed on host for your user.')
+    docker_cmd_parser.add_argument('--portnum',
+            metavar = 'the_number_of_port',
+            type = int,
+            default = 3,
+            help = 'The required ports exposed on host for your user.')
     docker_cmd_parser.add_argument('--apt',
             choices = ['ubuntu.16.04.offical', 'ubuntu.16.04.tsinghua'],
             default = 'ubuntu.16.04.offical',
