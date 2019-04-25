@@ -1,1 +1,3 @@
 graft src
+global-exclude *.DS_Store
+global-exclude __pycache__

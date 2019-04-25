@@ -13,7 +13,7 @@ from . import docker_general
 
 class SSH:
     """Manage the user with ssh key"""
-    def __init__(self, hostid, docker = "docker"):
+    def __init__(self, hostid, dockerprog):
         """
         :docker -> str: The command to fireup docker program.
             For example, to start the normal docker command, you run `docker`,
@@ -24,7 +24,7 @@ class SSH:
         self.hostip = ""
         self.dockerdb = "/root/dockerdb/userdb.json"
         self.sshconf = os.path.expanduser('~/.ssh/config')
-        self.docker = docker
+        self.docker = dockerprog
 
         if not os.path.exists(self.sshconf):
             print(f"[x] No config file found in {self.sshconf}!")
@@ -184,14 +184,15 @@ class SSH:
         conn.close()
         return True
 
-    def newdckr(self, user, portnum = 0, specport = None, dockerfile = ''):
+    def newdckr(self, user, apt, himsg, dockerfile, portnum = 0, specport = None):
         """Create a docker for user
 
-        :param hostid (string): The identifier of the host.
         :param user (string): The user name.
+        :param apt (string): The apt source type.
+        :param himsg (string): The hello message showed afer login in.
+        :dockerfile -> str: The path to docker file.
         :param portnum (int): The number of exposed ports.
         :param specport (list of ints): The specified ports in random generated ports.
-        :dockerfile -> str: The path to docker file.
 
         return dckrinfo (dict), status (bool):
             dckrinfo:
@@ -243,12 +244,12 @@ class SSH:
         # Determine if we shuold create the user
         if not self.is_user_exist(user): self.newuser(user)
 
-        dockerfile_content = ''
-        if dockerfile != '':
+        user_dockerfile_content = ''
+        if dockerfile:
             with open(dockerfile, 'r') as _:
                 firstline = _.readline().strip()
                 if firstline.startswith("FROM ubuntu:16.04"):
-                    dockerfile_content = _.read()
+                    user_dockerfile_content = _.read()
                 else:
                     print(f'[x] The docker file is not supported!')
                     return None, False
@@ -256,13 +257,18 @@ class SSH:
         finish_build  = docker_general.build(conn, dockerprog = self.docker,
                 user = user,
                 hostid = self.hostid,
-                content = dockerfile_content)
+                content = user_dockerfile_content,
+                apt = apt,
+                himsg = himsg)
 
         if finish_build == False:
             return None, False
 
+        # make a share folder between the container and host
+        conn.exec_command(f'mkdir -p /home/{user}/share')
+
         # docker run to generate container
-        dckrun = "{docker:s} run --hostname={hostid:s} --name {user:s} --volume /home/{user}:/home/{user}/share".format(
+        dckrun = "{docker:s} run --hostname={hostid:s} --name {user:s} --volume /home/{user}/share:/home/{user}/share".format(
                 docker = self.docker, hostid = self.hostid, user = user)
         dckrun += exposed_ports
         dckrun += " -d {hostid:s}:{user:s} ".format(hostid = self.hostid, user = user)

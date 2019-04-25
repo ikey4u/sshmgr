@@ -2,8 +2,11 @@
 #! -*- coding:utf-8 -*-
 
 import time
+import os
 
 import paramiko
+
+from . import util
 
 dckrtpl = """\
 FROM ubuntu:16.04
@@ -12,13 +15,6 @@ RUN bash /tmp/{init} {user:s} /tmp/{sourcelist} /tmp/{motd} /tmp/{sprvsr} {psdle
 {content:s}
 SHELL ["/bin/bash", "-c"]
 ENTRYPOINT "/usr/bin/supervisord"
-"""
-
-aptsource = """\
-deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ xenial main restricted universe multiverse
-deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ xenial-updates main restricted universe multiverse
-deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ xenial-backports main restricted universe multiverse
-deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ xenial-security main restricted universe multiverse
 """
 
 init = """\
@@ -54,10 +50,23 @@ echo $psd > /home/$user/.defpsd
 
 motdfmt = """\
 #! /bin/bash
-echo ----------------------------------
-echo Welcome {user:s} to HPDM Labs!
-echo ID   : {hostid:s}:{user}
-echo ----------------------------------
+echo --------------------------------------------------------------------
+echo
+echo "         _                          ";
+echo "        | |                         ";
+echo " ___ ___| |__  _ __ ___   __ _ _ __ ";
+echo "/ __/ __| '_ \| '_ \` _ \ / _\` | '__|";
+echo "\__ \__ \ | | | | | | | | (_| | |   ";
+echo "|___/___/_| |_|_| |_| |_|\__, |_|   ";
+echo "                          __/ |     ";
+echo "                         |___/      ";
+echo
+echo [Powered by sshmger, see https://github.com/ikey4u/sshmgr for more infomation]
+echo
+echo --------------------------------------------------------------------
+echo {himsg}
+echo ID: {hostid:s}:{user}
+echo --------------------------------------------------------------------
 """
 
 sprvsrfile = """\
@@ -77,6 +86,8 @@ def build(conn: paramiko.SSHClient, **extra) -> bool:
             'user': The user name.
             'hostid': The host where the docker is built in.
             'content': The customized docker file content.
+            'himsg': The hello message from the administrator.
+            'apg': The apt souce type.
         }
 
     :return: if build successfully, return true, or else false.
@@ -85,10 +96,11 @@ def build(conn: paramiko.SSHClient, **extra) -> bool:
     tm = str(time.time())
     sftp = conn.open_sftp()
 
-    with sftp.file(f"/tmp/{tm}.sourcelist", "w") as _:
-        _.write(aptsource)
+    with sftp.file(f"/tmp/{tm}.sourcelist", "w") as srcfile:
+        with open(os.path.join(util.get_data_root(), 'ubuntu', extra['apt']), 'r') as _:
+            srcfile.write(_.read())
     with sftp.file(f"/tmp/{tm}.motd", "w") as _:
-        _.write(motdfmt.format(user = extra['user'], hostid = extra['hostid']))
+        _.write(motdfmt.format(himsg = extra['himsg'], user = extra['user'], hostid = extra['hostid']))
     with sftp.file(f"/tmp/{tm}.supervisord", "w") as _:
         _.write(sprvsrfile)
     with sftp.file(f"/tmp/{tm}.init", "w") as _:

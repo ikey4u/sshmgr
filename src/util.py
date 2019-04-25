@@ -1,19 +1,23 @@
 #! /usr/bin/env python3
 #! -*- coding:utf-8 -*-
 
+import os
 from inspect import getframeinfo,stack
 
-class Util(object):
-    """Util class for debug"""
+def get_data_root():
+    dataroot = os.path.abspath(os.path.dirname(__file__))
+    return os.path.join(dataroot, 'data')
 
-    # User may set ENABLE_DBG to False to disable debug information
-    ENABLE_DBG = True
+def get_proj_root():
+    rootpath = os.path.abspath(os.path.dirname(__file__))
+    return rootpath
 
-    @staticmethod
-    def print(msg):
-        """Function for printing debug information"""
+def get_version():
+    with open(os.path.join(get_proj_root(), '__VERSION__'), 'r') as _:
+        return _.readline().strip()
 
-        if(not Util.ENABLE_DBG):return
-        caller = getframeinfo(stack()[1][0])
-        print("[DBGINFO] ==> [%s -> %s -> %d]\n\t%s" %
-             (caller.filename, caller.function, caller.lineno, msg))
+def dbgprint(msg):
+    caller = getframeinfo(stack()[1][0])
+    print("[DBGINFO] ==> [%s -> %s -> %d]\n\t%s" %
+         (caller.filename, caller.function, caller.lineno, msg))
+
