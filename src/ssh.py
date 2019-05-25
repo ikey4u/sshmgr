@@ -35,7 +35,11 @@ class SSH:
             conn = self.__connect()
             conn.close()
         except Exception as e:
-            raise Exception("Cannot connect to the server!")
+            strerr = str(e)
+            if 'invalid key' in strerr.lower():
+                raise Exception(f"Invalid key! Make sure your private key is in PEM format!")
+            else:
+                raise Exception(f"Cannot connect to the server!")
 
     def __connect(self):
         config = paramiko.SSHConfig()
