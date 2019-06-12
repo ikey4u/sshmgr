@@ -13,6 +13,7 @@ setup (
     author_email = 'pwnkeeper@gmail.com',
     url = 'https://github.com/ikey4u/sshmgr',
     description = 'A powerful ssh manager',
+    long_description_content_type='text/markdown',
     long_description = open('README.md').read(),
 
     python_requires = '>=3.6.0',

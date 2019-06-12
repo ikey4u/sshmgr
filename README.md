@@ -1,14 +1,3 @@
-             _
-            | |
-     ___ ___| |__  _ __ ___   __ _ _ __
-    / __/ __| '_ \| '_ ` _ \ / _` | '__|
-    \__ \__ \ | | | | | | | | (_| | |
-    |___/___/_| |_|_| |_| |_|\__, |_|
-                              __/ |
-                             |___/
-
-    [Powered by sshmger, see https://github.com/ikey4u/sshmgr for more infomation]
-
 # sshmgr - A powerful Linux server manager
 
 It leverages docker to automatically do
@@ -36,7 +25,7 @@ You can specify a customized `dockerfile` with first line beginning with `FROM u
 
 Download the source, uncompress it and enter the source directory. Run the following command to install
 
-    python3 setup.py install
+    pip3 install sshmgr
 
 # Quick start
 
