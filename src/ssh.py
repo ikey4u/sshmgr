@@ -39,13 +39,17 @@ class SSH:
             if 'invalid key' in strerr.lower():
                 raise Exception(f"Invalid key! Make sure your private key is in PEM format!")
             else:
-                raise Exception(f"Cannot connect to the server!")
+                raise Exception(f"Cannot connect to the server! Error => {strerr}")
 
     def __connect(self):
         config = paramiko.SSHConfig()
         with open(self.sshconf, 'r') as _: config.parse(_)
         hostopt = config.lookup(self.hostid)
         cfg = dict()
+        if 'include' in hostopt:
+            with open(os.path.expanduser(hostopt['include']), 'r') as _:
+                config.parse(_)
+                hostopt = config.lookup(self.hostid)
         cfg['hostname'] = hostopt['hostname']
         cfg['username'] = hostopt['user']
         if 'port' in hostopt.keys():
@@ -54,6 +58,9 @@ class SSH:
             cfg['port'] = 22
         cfg['key_filename'] = hostopt['identityfile']
         cfg['timeout'] = 10
+        # Enable ProxyCommand in ssh connection
+        if 'proxycommand' in hostopt:
+            cfg['sock'] = paramiko.ProxyCommand(hostopt['proxycommand'])
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.connect(**cfg)

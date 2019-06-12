@@ -97,3 +97,7 @@ host name
 sshmgr will connect to your specified host and create a docker container for
 your guest, create a `$HOME/share` folder shared between the user on host and the
 user on the container.
+
+# Development
+
+Open a terminal at the project root, debug with `python3 -m src <options>`.
