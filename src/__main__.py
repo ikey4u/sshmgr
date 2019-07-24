@@ -4,10 +4,85 @@
 import argparse
 import os
 import sys
+import json
 
 from .ssh import SSH
 from . import util
+from .sysinfo import SysInfo
 
+def parse_targets(input_hosts):
+
+    hosts = list()
+
+    flag_file = '@'
+    flag_list = '/'
+    if input_hosts.startswith(flag_file):
+        hostpath = os.path.expanduser(input_hosts[len(flag_file):])
+        if os.path.exists(hostpath):
+            with open(hostpath, 'r') as _:
+                lines = _.readlines()
+                for line in lines:
+                    line = line.strip()
+                    if line.startswith('#') or not line:
+                        continue
+                    else:
+                        hosts.append(line)
+        else:
+            print(f'[✗] Cannot open file => {hostpath}!')
+    elif input_hosts.startswith(flag_list):
+        hosts.extend([h.strip() for h in input_hosts[len(flag_list):].split(',') if h.strip()])
+    else:
+        hosts.append(input_hosts)
+    return hosts
+
+def get_connection(host, **kwargs):
+    ssh = None
+    print(f'[+] Connect to {host} ... ', end = '')
+    try:
+        ssh = SSH(host, **kwargs)
+    except Exception as e:
+        print('✗')
+        print(f"[✗] Cannot connect to {host}, errors:")
+        print(str(e))
+        return None, str(e)
+    print('✓')
+    conn = ssh.connect()
+    return conn, None
+
+def parse_info_cmd(args):
+    hosts = parse_targets(args.hosts)
+    hosts_info = {}
+    for host in hosts:
+        host_info = {}
+        host_info['info'] = {}
+        conn, diemsg = get_connection(host)
+        host_info['diemsg'] = diemsg
+        if conn is None:
+            host_info['islive'] = False
+        else:
+            host_info['islive'] = True
+            sysinfo = SysInfo(conn)
+            infokind = []
+            if args.net: infokind.append('net')
+            if args.factory: infokind.append('factory')
+            if args.cpu: infokind.append('cpu')
+            if args.mem: infokind.append('mem')
+            if args.disk: infokind.append('disk')
+
+            infos = sysinfo.get(infokind)
+
+            for kind in infos.keys():
+                host_info['info'][kind] = sysinfo.purify(kind, infos[kind])
+
+        hosts_info[host] = host_info
+
+    saveto = os.path.join(os.getcwd(), 'sysinfo.json')
+    print(f'[+] Save system information to {saveto} ... ', end = '')
+    with open(saveto, 'w') as _:
+        json.dump(hosts_info, _)
+    print('[✓]')
+
+# TODO(bugnofree 2019-07-23): Reduce `parse_docker_cmd` with `get_connection` and `parse_targets`
 def parse_docker_cmd(args):
 
     if not args.hosts:
@@ -110,10 +185,10 @@ def main():
             help = 'Show the version of sshmgr')
     parser.add_argument('--hosts', nargs = '?', metavar = 'hosts', type = str,
             help = 'The host(s) to be operated on')
-    parser.add_argument('--sshkey',  type = str, metavar = 'path_of_the_new_ssh_key',
+    parser.add_argument('--sshkey',  type = str, metavar = 'path_to_the_new_ssh_key',
             help = 'Update ssh key for administrator')
 
-    subparsers = parser.add_subparsers(dest = 'has_docker_cmd')
+    subparsers = parser.add_subparsers(dest = 'subcommand')
 
     docker_cmd_parser = subparsers.add_parser('docker')
     docker_args_group = docker_cmd_parser.add_mutually_exclusive_group(required = True)
@@ -160,10 +235,20 @@ def main():
             type = str,
             help = 'Messages showed after your guest logined into the server')
 
+    info_parser = subparsers.add_parser('info')
+    info_parser.add_argument('--net', action = 'store_true')
+    info_parser.add_argument('--factory', action = 'store_true')
+    info_parser.add_argument('--cpu', action = 'store_true')
+    info_parser.add_argument('--mem', action = 'store_true')
+    info_parser.add_argument('--disk', action = 'store_true')
+
     args = parser.parse_args()
 
-    if args.has_docker_cmd:
-        parse_docker_cmd(args)
+    if args.subcommand:
+        if args.subcommand == 'docker':
+            parse_docker_cmd(args)
+        elif args.subcommand == 'info':
+            parse_info_cmd(args)
     elif args.sshkey:
             ok = ssh.change_sshkey(args.sshkey)
             if ok:

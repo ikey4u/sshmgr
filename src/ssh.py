@@ -13,7 +13,7 @@ from . import docker_general
 
 class SSH:
     """Manage the user with ssh key"""
-    def __init__(self, hostid, dockerprog):
+    def __init__(self, hostid, dockerprog = 'docker', **kwargs):
         """
         :docker -> str: The command to fireup docker program.
             For example, to start the normal docker command, you run `docker`,
@@ -32,14 +32,17 @@ class SSH:
 
         # Check connection(only once for now)
         try:
-            conn = self.__connect()
-            conn.close()
+            self.conn = self.__connect()
         except Exception as e:
             strerr = str(e)
             if 'invalid key' in strerr.lower():
                 raise Exception(f"Invalid key! Make sure your private key is in PEM format!")
             else:
                 raise Exception(f"Cannot connect to the server! Error => {strerr}")
+
+    def connect(self):
+        conn = self.__connect()
+        return conn
 
     def __connect(self):
         config = paramiko.SSHConfig()
